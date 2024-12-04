@@ -1,0 +1,164 @@
+\documentclass[9pt]{article}
+\usepackage{enumitem}
+\usepackage{latexsym}
+\usepackage{amsfonts}
+\usepackage{float}
+\usepackage{fullpage}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{pdflscape}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{float}
+\usepackage{subfigure}
+\usepackage{longtable}
+\usepackage{subcaption}
+\usepackage{subcaption}
+\usepackage{amsmath} % Add the necessary package for the control sequence
+\usepackage{setspace} % Add the necessary package for adjusting line spacing
+\usepackage{hyperref}
+% \usepackage{subcaption}
+\geometry{
+    left=0.5in,
+    right=0.5in,
+    top=0.5in,
+    bottom=0.5in
+}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\R}{\mathcal{R}}
+\newcommand{\A}{\mathcal{A}}
+
+\newcommand{\handout}[4]{
+   \renewcommand{\thepage}{#1-\arabic{page}}
+   \pagestyle{empty}
+   \noindent
+   \begin{center}
+   \framebox{
+      \vbox{
+    \hbox to 6in { {\bf CS657}
+         \hfill #2 }
+       \vspace{4mm}
+       \hbox to 6in { {\Large \hfill #4  \hfill} }
+       \vspace{2mm}
+       \hbox to 5.78in { {\it #3 \hfill} }
+      }
+   }
+   \end{center}
+   \vspace*{4mm}
+}
+
+\newcommand{\solheader}[2]{\handout{#1}{\today}{#2}{HW4:Recommender System}}
+
+
+%\input{sol_preamble.tex}
+
+% topics: Turing machines, universal TMs, languages, TMs deciding a language, uncomputable languages
+
+\begin{document}
+%%%%%%% Edit this next line: parameter 1 is the homework number, the 2nd is your name.
+\solheader{1}{Antara Tewary (G01413546),Ankit Kumar (G01436204)}
+\begin{enumerate}
+    \item \textbf{\underline{Introduction}}\\
+    This assignment explores three recommendation algorithms using MovieLens 25M dataset which has 25 million ratings for 62,000 movies from 162,000 users. The dataset's rich information about user's preferences and movie attibutes gives us an opportunity to look into the trends and patterns in data. We go through three stages: starting with Alternating Least Squares (ALS) matrix factorization, optimized by cross validation, and enhancing it with item-item collaborative filtering for a hybrid approach. At the end we add a supervised learning componend that uses movie features, which creates a robust three component hybrid system.\\ 
+    We implement this in Spark and focus on optimizing performance within cluster's constraints. Effectiveness of our approach is evaluated using RMSE, MSE, and MAP metrics which ensures a thorough comparison of each approach.
+    \item \textbf{\underline{Data Analysis}}
+    \begin{itemize}
+      \item \textit{Dataset Overview:} Ratings data contains userId, movieId, and rating fields, while movies data includes movieId, title, and genres. A positivity bias in ratings is evident in Figure~\ref{fig:rating_distribution}, with a median of 4.0 stars and most ratings clustered in the 3-4 star range.
+      \item \textit{Data Cleaning:} We converted column types (IDs as integers, ratings as floats) and repartitioned into 12 partitions for efficiency. We cached frequently accessed dataframes, and implemented a drop strategy for cold start scenarios in ALS model.
+      \item \textit{Exploratory Data Analysis:} As shown in Figure~\ref{fig:rating_vs_count}, classics like \texttt{Forest Gump} and \texttt{The Shawshank Redemption} dominate the ratings, each exceeding 70,000. For genre, \texttt{Drama} is the most popular, followed by \texttt{Comedy} (Figure~\ref{fig:genre_distribution}). Specialized genres like \texttt{Film-Noir} and \texttt{IMAX} have fewer ratings. As seen in Figure~\ref{fig:genre_histogram}, most genres' median ratings are between 3-4 stars. \texttt{Documentaries} and \texttt{Dramas} have slightly higher median ratings, while \texttt{Horror} shows the widest variance.
+      \item \textit{Data Partitioning:} The dataset was split 80-20 for training (19,999,186 ratings) and validation (5,000,909 ratings) using Spark's randomSplit with seed 42. Larger validation sets ensure robust evaluation. Figure~\ref{fig:rating_vs_count} shows the scatter plot of average ratings versus number of ratings per movie, revealing a characteristic pattern where rating variance decreases as the number of ratings increases, suggesting more reliable average ratings for frequently-rated movies. This motivated us to use "drop" strategy for cold-start scenarios in the collaborative filtering approaches.
+    \end{itemize}
+    \begin{figure}[H]
+      \subfigure[Rating Distribution]{
+        \includegraphics[width=0.45\textwidth]{Images/rating_distribution.png}
+        \label{fig:rating_distribution}
+    }
+    \subfigure[Histogram of Ratings]{
+        \includegraphics[width=0.55\textwidth]{Images/genre_ratings.png}
+        \label{fig:genre_histogram}
+    }
+    \end{figure}
+    \begin{figure}[H]
+      % \centering
+      \subfigure[Movie popularity]{
+          \includegraphics[width=0.5\textwidth]{Images/top_movies.png}
+          \label{fig:movie_popularity}
+      }
+      \subfigure[Genre Distribution]{
+          \includegraphics[width=0.5\textwidth]{Images/genre_distribution.png}
+          \label{fig:genre_distribution}
+      }
+      \subfigure[Rating vs count]{
+          \includegraphics[width=0.6\textwidth]{Images/rating_vs_count.png}
+          \label{fig:rating_vs_count}
+      }
+    \end{figure}
+    \item \textbf{\underline{Implementation}}
+    \begin{itemize}
+      \item \textit{Base ALS Recommender System:}We first implemented Spark's ALS algorithm as our base. This model is configured with nonnegativity constraints and a drop strategy for cold-start scenarios, ensuring robustness. We implemented Cross-Validation using a Parameter Grid that explores rank values of 10 and 20, iteration counts of 5 and 15, and regularizatin parameters of 0.01 and 0.1.We distributed data in 100 partitions to balance processing load.
+      \item \textit{Hybrid System with ALS and ITem-Item Collaborative Filtering:}The hybrid system enhances the basic ALS model by introducing item-item collaborative filtering. We calculated movie similarities using cosine similarity and integrate it with ALS predictions through a weighted approach. We explored different weight combinations(0.3,0.5,0.7) with complementary weights assigned to the CF component. This method leverages the strength of global patterns captured by ALS and local similarities identified by item-item CF.
+      \item \textit{Enhanced Hybrid System with Supervised Learning:}The final stage introduces a supervised learning component through Random Forest regressor, which creates the three-way hybrid architecture. This component introduces movie features through feature engineering, focusing on genre and metadata. Our \texttt{EnhancedHybridRecommender} class explores various weight combinations including balanced (0.4, 0.3, 0.3), ALS-dominant (0.6, 0.2, 0.2), and supervised-learning-dominant (0.2, 0.2, 0.6).
+    \end{itemize}
+    \item \textbf{\underline{Performance Analysis}}
+    \begin{itemize}
+      \item \textit{\textbf{Evaluation Metrics}}\\Model performance is assessed using three metrics. RMSE(Root Mean Square Error) and MSE(Mean Square Error) measure prediction accuracy where lower values indicate better performance. Map\@10(Mean Avg Precision at 10) evaluates the recommendation quality by assessing how well the system ranks the top 10 recommendations for each user, with higher values indicating better ranking performance.
+      \item \textit{\textbf{Visualization Analysis}}
+      \begin{itemize}
+        \item The correlation analysis between these metrics (Figure~\ref{fig:metric_correlation}) reveals a strong positive correlation (1.0) between RMSE and MSE, while MAP@10 shows a weak negative correlation with both error metrics (-0.21 with MSE and -0.26 with RMSE), suggesting that optimizing for prediction accuracy doesn't necessarily improve recommendation ranking quality.
+        \item Figure~\ref{fig:map10_comprison} shows Map@10 performance across all three models, showing consistent performance around 0.24. The radar plot(Figure~\ref{fig:radar_comparison})visualization demonstrates how each model variant performs across all three metrics, providing a clear view of the trade-offs between prediction accuracy and ranking quality. The distribution of metrics(Figure~\ref{fig:metric_distribution}) highlights the relative performance of each approach.
+      \end{itemize}
+      \begin{figure}[H]
+        \subfigure[Correlation Between Metrics]{
+            \includegraphics[width=0.5\textwidth]{Images/metric_correlation.png}
+            \label{fig:metric_correlation}
+          }
+        \subfigure[ MAP@10 Comparison Across Models]{
+            \includegraphics[width=0.5\textwidth]{Images/map_comparison_sns.png}
+            \label{fig:map10_comprison}
+        }
+        \subfigure[Relative Performance Across Metrics (Radar Plot)]{
+            \includegraphics[width=0.5\textwidth]{Images/radar_comparison.png}
+            \label{fig:radar_comparison}
+        }
+        \subfigure[Distribution of Normalized Metrics Across Models]{
+            \includegraphics[width=0.5\textwidth]{Images/metric_distribution.png}
+            \label{fig:metric_distribution} 
+        }
+      \end{figure}
+      \item \textit{\textbf{Results and Comparison}}\\The performance comparison across our three implemented models reveals interesting trade-offs between prediction accuracy and ranking quality. The baseline ALS model achieved the best error metrics with an RMSE of 0.8069 and MSE of (Figure~\ref{fig:error_metrics_comparison_sns}). While the two-component hybrid system showed higher error rates (RMSE: 1.4349, MSE: 2.0590), it maintained comparable MAP@10 performance at 0.2443, suggesting that the addition of item-based collaborative filtering preserved recommendation ranking quality despite increased prediction error. The three-component system demonstrated a balanced performance with improved error metrics (RMSE: 1.2692, MSE: 1.6109) compared to the two-component system, though still not matching the baseline ALS accuracy. Notably, as shown in Figure~\ref{fig:improvement_analysis}, while both hybrid approaches showed increased error metrics compared to the baseline, they maintained stable MAP@10 scores, indicating robust ranking performance. The heatmap visualization (Figure~\ref{fig:metrics_heatmap_sns}) particularly highlights how the three-component system achieves a better balance between prediction accuracy and ranking quality, suggesting it might be the most practical choice for real-world applications despite not being the top performer in any single metric.
+      \begin{figure}[H]
+        \subfigure[Error Metrics Comparison]{
+            \includegraphics[width=0.5\textwidth]{Images/error_metrics_comparison_sns.png}
+            \label{fig:error_metrics_comparison_sns}
+          }
+        \subfigure[ Improvement Analysis Across Models]{
+            \includegraphics[width=0.5\textwidth]{Images/improvement_analysis.png}
+            \label{fig:improvement_analysis}
+        }
+        \subfigure[Metrics Heatmap]{
+            \includegraphics[width=0.5\textwidth]{Images/metrics_heatmap_sns.png}
+            \label{fig:metrics_heatmap_sns}
+        }
+        \subfigure[Model Comparison]{
+            \includegraphics[width=0.5\textwidth]{Images/model_comparison.png}
+            \label{fig:model_comparison} 
+        }
+      \end{figure}
+    \end{itemize}
+    \item \textbf{\underline{Challenges And Solutions}}\\
+    The implementation of our recommender system faced three primary challenges:
+    \begin{itemize}\vspace{-0.5em}
+      \item memory management with the large-scale MovieLens dataset
+      \item computational efficiency in hybrid model integration
+      \item optimization of evaluation metrics across different model components
+    \end{itemize}\vspace{-0.5em}
+    Some solutions that we tried:-
+    \begin{itemize}\vspace{-0.5em}
+      \item For memory constraints, we partitioned the data into 100 partitions, used caching, and Spark's broadcast varuables for smaller datasets to reduce shuffle operations.
+      \item To integrate multiple recommendation approaches, we used an efficient weighted combination strategy with optimized join operations.
+      \item Performance optimization was achieved through parallel processing of model components and careful configuration of storage levels for intermediate results.
+    \end{itemize}
+  \item \textbf{\underline{Conclusion}}\\
+  As shown in Figure~\ref{fig:model_comparison}, our experimentation with three recommender system approaches revealed clear performance patterns. The baseline ALS model achieved the best accuracy metrics (RMSE: 0.8069, MSE: 0.6511), while the hybrid approaches demonstrated higher error rates but consistent MAP@10 scores. The three-component system showed improved error metrics over the two-component hybrid, suggesting better balance between accuracy and ranking.
+\end{enumerate}
+\end{document}
